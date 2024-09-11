@@ -173,6 +173,13 @@ if st.button('Process Forms'):
             'S': 270,
             'SE': 315,
             'Centre': 0}
+        
+        #  missing distance to centre
+        if any(np.isnan(df['distance_m'])):
+            ix = np.isnan(df['distance_m'])
+            add_notprocessed(ix, 'missing distance')
+            df = df.loc[~ix]
+            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing cardinal plot distance. These entries have been added to ' + warn_str)
 
         # get angles and calc coordinates for each data point
         ang = df["cardinal_dir"].apply(lambda x: cardinal_ang.get(x))
@@ -190,12 +197,7 @@ if st.button('Process Forms'):
         (df['lat'], df['lon']) = utm.to_latlon(df['Easting_m'], df['Northing_m'], 10, 'U')
 
         ### DATA/PROCESSING CHECKS
-        #  missing distance to centre
-        if any(np.isnan(df['distance_m'])):
-            ix = np.isnan(df['distance_m'])
-            add_notprocessed(ix, 'missing distance')
-            df = df.loc[~ix]
-            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing cardinal plot distance. These entries have been added to ' + warn_str)
+
 
         # missing snow_depth
         if any(np.isnan(df['snow_depth'])):
@@ -222,7 +224,8 @@ if st.button('Process Forms'):
         if st.session_state.warnings == []:
             st.warning(':green[All data was processed successfully!] 👍')
         else:
-            st.warning('**WARNING:** Not all entries were processed successfully [' + str(len(df)) + '/' + str(initial_length) + ' processed]. See warning messages below.')
+            st.warning('**WARNING:** Not all entries were processed successfully [' + str(len(df)) + '/' + str(initial_length) + ' processed, '
+                       + str(len(df_notprocessed)) + '/' + str(initial_length) + ' not processed]. See warning messages below.')
 
             for ii, warn_str in enumerate(st.session_state.warnings):
                 st.warning('Warning ' + str(ii+1) + ': ' + str(warn_str))
@@ -243,7 +246,7 @@ if st.button('Process Forms'):
             if len(df_notprocessed) > 0:
                 # bump index by 2 to align with input form rows
                 df_notprocessed.index += 2
-                csv_zip.writestr(study_area_str + '_flight' + aco_flt_num + '_NOTprocessed.csv', pd.DataFrame(df_notprocessed).to_csv(index=True, index_label='df_row'))
+                csv_zip.writestr(study_area_str + '_flight' + aco_flt_num + '_NOTprocessed.csv', pd.DataFrame(df_notprocessed).to_csv(index=True, index_label='input_row'))
 
         # download button
         st.download_button(
