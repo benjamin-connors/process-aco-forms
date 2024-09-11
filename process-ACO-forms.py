@@ -196,6 +196,7 @@ if st.button('Process Forms'):
         #  missing distance to centre
         if any(np.isnan(df['distance_m'])):
             ix = np.isnan(df['distance_m'])
+            df.loc[ix, ['Easting_m', 'Northing_m']] = None
             add_notprocessed(ix, 'missing distance')
             df = df.loc[~ix]
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing cardinal plot distance. These entries have been added to ' + warn_str)
