@@ -2,3 +2,5 @@
 *venv*
 *.csv
 !ACO_form_fieldnames.csv
+*test_data*
+*archive*
