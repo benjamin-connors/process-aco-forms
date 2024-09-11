@@ -28,7 +28,7 @@ read_flag,post_process,2024_v2,2024,2022_v3,2024_gs,2022_v3_gs,2024_alt,tsitika
 1,depth_cm,Point Observation : Depth (cm),Point Observation : Depth (cm),Point Observation : Depth (cm),Point_Observation.Depth__cm_,Point_Observation.Depth__cm_,,depth_cm
 ,depth_time,Point Observation : Depth (cm) : timestamp,Point Observation : Depth (cm) : timestamp,Point Observation : Depth (cm) : timestamp,Point_Observation.Depth__cm_:timestamp,Point_Observation.Depth__cm_:timestamp,,depth_timestamp
 ,number_probes,Point Observation : Number of probe extensions used?,Point Observation : Number of probe extensions used?,Point Observation : Number of probe extensions used?,Point_Observation.Number_of_probe_extensions_used_,Point_Observation.Number_of_probe_extensions_used_,,
-1,depth_final_cm,Point Observation : Depth Final (cm),Point Observation : Depth Final (cm),Point Observation : Depth Final (cm),Point_Observation.Depth_Final__cm_,Point_Observation.Depth_Final__cm_,,
+1,depth_final_cm,Point Observation : Depth Final (cm),Point Observation : Depth Final (cm),Point Observation : Depth Final (cm),Point_Observation.Depth_Final__cm_,Point_Observation.Depth_Final__cm_,,snow_depth
 ,core_length_cm,Point Observation : Core Length (cm),Point Observation : Core Length (cm),Point Observation : Core Length (cm),Point_Observation.Core_Length__cm_,Point_Observation.Core_Length__cm_,,core_length_cm
 ,plug_cm,Point Observation : Plug (cm),Point Observation : Plug (cm),Point Observation : Plug (cm),Point_Observation.Plug__cm_,Point_Observation.Plug__cm_,,plug_cm
 ,snowtube_cm,Point Observation : Snow + Tube (cm),Point Observation : Mass + Tube (cm SWE),,Point_Observation.SWE_cm,,,

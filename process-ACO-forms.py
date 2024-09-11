@@ -36,6 +36,14 @@ study_area_dict = {
     'Metro Vancouver': 'MV',
     'Russell Creek': 'TSI'
 }
+utm_dict = {
+    'Cruickshank': 10,
+    'Englishman': 10,
+    'Metro Vancouver': 10,
+    'Russell Creek': 9
+}
+
+mandatory_fields = ['plot_id', 'study_area', 'plot_type', 'cardinal_dir', 'distance_m']
 
 ### FUNCTIONS
 def add_notprocessed(index, problem):
@@ -95,13 +103,15 @@ if st.button('Process Forms'):
                     # If only one column contains data, use that column
                     df[df_fieldnames['post_process'][ii]] = df_dmform[cols_with_data[0]]
                 elif len(cols_with_data) > 1:
-                    # If more than one column contains data, issue a warning
-                    warnings.warn(f"Multiple columns contain data for post_process '{df_fieldnames['post_process'][ii]}'. Data from column(s) {cols_with_data} will be used.")
-                    # You might decide to handle this case differently, for now, we'll take the first one
-                    df[df_fieldnames['post_process'][ii]] = df_dmform[cols_with_data[0]]
-                else:
+                    # If more than one column contains data, issue error
+                    st.warning.warn(f"Multiple columns contain data for the field '{df_fieldnames['post_process'][ii]}'. Data from column(s) {cols_with_data} will be used.")
+                    st.error('**ERROR:** Multiple columns contain data for the field ' + df_fieldnames['post_process'][ii] + '.')
+                    st.stop()
+                    # If no column found for a mandatory field, issue error
+                elif (len(cols_with_data) == 0) and np.isin(df_fieldnames['post_process'][ii], mandatory_fields):
                     # If none of the columns contain data, you may want to handle this case, e.g., by setting NaN or another default value
-                    df[df_fieldnames['post_process'][ii]] = np.nan
+                    st.error('**ERROR:** No columns found that contain data for the field ' + df_fieldnames['post_process'][ii] + '.')
+                    st.stop()
 
         df.insert(0, 'aco_flight_number', aco_flt_num)
         df.insert(0, 'row', range(len(df)))
@@ -195,11 +205,9 @@ if st.button('Process Forms'):
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries were given bad coordinates (check GNSS file). These entries have been added to ' + warn_str)
 
         # get lat/lons
-        (df['lat'], df['lon']) = utm.to_latlon(df['Easting_m'], df['Northing_m'], 10, 'U')
+        (df['lat'], df['lon']) = utm.to_latlon(df['Easting_m'], df['Northing_m'], utm_dict[study_area], 'U')
 
         ### DATA/PROCESSING CHECKS
-
-
         # missing snow_depth
         if any(np.isnan(df['snow_depth'])):
             ix = np.isnan(df['snow_depth'])
