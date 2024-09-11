@@ -96,6 +96,7 @@ if st.button('Process Forms'):
         # Find columns that match the current post_process name
             possible_cols = df_fieldnames.iloc[ii, np.in1d(df_fieldnames.iloc[ii, :], dmform_cols)]
             possible_cols = np.unique(possible_cols[possible_cols.isin(df_dmform.columns)])
+
             if len(possible_cols) > 0:
                 # Check which of these columns contain data
                 cols_with_data = [col for col in possible_cols if not df_dmform[col].isnull().all()]
@@ -103,15 +104,22 @@ if st.button('Process Forms'):
                     # If only one column contains data, use that column
                     df[df_fieldnames['post_process'][ii]] = df_dmform[cols_with_data[0]]
                 elif len(cols_with_data) > 1:
-                    # If more than one column contains data, issue error
-                    st.warning.warn(f"Multiple columns contain data for the field '{df_fieldnames['post_process'][ii]}'. Data from column(s) {cols_with_data} will be used.")
-                    st.error('**ERROR:** Multiple columns contain data for the field ' + df_fieldnames['post_process'][ii] + '.')
-                    st.stop()
-                    # If no column found for a mandatory field, issue error
-                elif (len(cols_with_data) == 0) and np.isin(df_fieldnames['post_process'][ii], mandatory_fields):
-                    # If none of the columns contain data, you may want to handle this case, e.g., by setting NaN or another default value
-                    st.error('**ERROR:** No columns found that contain data for the field ' + df_fieldnames['post_process'][ii] + '.')
-                    st.stop()
+                    # If more than one column contains data, check if fields are identical
+                    reference_col = df_dmform[cols_with_data[0]]
+                    identical = all(reference_col.fillna(df_dmform[col]).equals(df_dmform[col].fillna(reference_col)) for col in cols_with_data)
+                    
+                    if identical:
+                        # All columns are identical where they have values, choose the column with the most data
+                        most_data_col = max(cols_with_data, key=lambda col: df_dmform[col].notna().sum())
+                        df[df_fieldnames['post_process'][ii]] = df_dmform[most_data_col]
+                    else:
+                        # Columns are not identical
+                        st.error(f'**ERROR:** Multiple columns on the input file {str(cols_with_data)} contain data for the field {df_fieldnames["post_process"][ii]}.')
+                        st.stop()
+            elif np.isin(df_fieldnames['post_process'][ii], mandatory_fields):
+                # If none of the columns contain data, you may want to handle this case
+                st.error(f'**ERROR:** No columns found on the input file that contain data for the field {df_fieldnames["post_process"][ii]}.')
+                st.stop()
 
         df.insert(0, 'aco_flight_number', aco_flt_num)
         df.insert(0, 'row', range(len(df)))
@@ -353,7 +361,7 @@ if st.button('Process Forms'):
 
         # Density Bar Stacked Plot
         fig2, ax2 = plt.subplots(figsize=(7, 2.5))  # Width = 700px / 100, Height = 250px / 100
-        bin_edges_density = np.arange(0, 1.05, 0.05)
+        bin_edges_density = np.arange(0, 1.05, 0.025)
 
         for plot_id, color in zip(unique_plot_ids, color_list):
             subset = df[df['plot_id'] == plot_id]
