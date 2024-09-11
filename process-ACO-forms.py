@@ -156,7 +156,8 @@ if st.button('Process Forms'):
             plot_str = np.unique(df.loc[ix, 'plot_id'])
             add_notprocessed(ix, 'plot_id not in gnss')
             df = df.loc[~ix]
-            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries were not provided coordinates in the GNSS file [' + plot_str + ']. These entries have been added to ' + warn_str)
+            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries were not provided coordinates in the GNSS file [' +
+                ", ".join(plot_str) + ']. These entries have been added to ' + warn_str)
 
         # add eastings and northings according to plot id
         df = df.merge(df_gnss, on='plot_id')
