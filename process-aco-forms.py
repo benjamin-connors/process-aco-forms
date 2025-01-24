@@ -144,12 +144,17 @@ if st.button('Process Forms'):
         # get summary statistics
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
-            df_summary = df.groupby(['plot_id']).agg({
-            "snow_depth": ["mean", "median", "std", "count"],
-            "density_gscale": ["mean", "median", "std", "count"],
-            "density_swescale": ["mean", "median", "std", "count"],
-            "swe_final_swescale": ["mean", "median", "std", "count"],
-            "swe_final_swescale": ["mean", "median", "std", "count"]})
+            # Calculate summary stats without filling or removing NaN values
+            df_summary = df.groupby('plot_id').agg({
+                "snow_depth": ["count", "mean", "median", "std"],
+                "density_gscale": ["count", "mean", "std"],
+                "swe_final_gscale": ["mean", "median", "std"],
+                "density_swescale": ["count", "mean", "median", "std"],
+                "swe_final_swescale": ["mean", "median", "std"]
+            }).reset_index()
+
+            # Rename columns for better readability
+            df_summary.columns = ['_'.join(col).strip() for col in df_summary.columns.values]
 
         #  find entries that appear to be cardinal plots, but don't have the plot type entered (give warning and assign cardinal plot type to these entries)
         if any(pd.isnull(df['plot_type']) & ~pd.isnull(df['cardinal_dir'])):
@@ -390,7 +395,7 @@ if st.button('Process Forms'):
             st_folium(m, width=700, height=500, returned_objects=[])
             st.markdown(
                 """
-                **Note:** A red bounding box should be drawn around all data points. If you do not see the bounding box, there may be data points plotting outside of the current map view.
+                **Note:** A red bounding box should be drawn around all data points. If you do not see the bounding box, there may be erroneous data points plotting outside of the current map view.
                 """
             )
 
