@@ -122,7 +122,7 @@ if st.button('Process Forms'):
                 st.stop()
 
         df.insert(0, 'aco_flight_number', aco_flt_num)
-        df.insert(0, 'row', range(len(df)))
+        # df.insert(0, 'row', range(len(df)))
         df_notprocessed = pd.DataFrame(columns=df.columns)
         df_notprocessed.insert(0,'problem', [])
 
@@ -265,7 +265,7 @@ if st.button('Process Forms'):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "x") as csv_zip:
             csv_zip.writestr(study_area_str + '_flight' + aco_flt_num + '_processed.csv', pd.DataFrame(df).to_csv(index=False))
-            csv_zip.writestr(study_area_str + '_flight' + aco_flt_num + '_summarystats.csv', pd.DataFrame(df_summary).to_csv())
+            csv_zip.writestr(study_area_str + '_flight' + aco_flt_num + '_summarystats.csv', pd.DataFrame(df_summary).to_csv(index=False))
             if len(df_notprocessed) > 0:
                 # bump index by 2 to align with input form rows
                 df_notprocessed.index += 2
