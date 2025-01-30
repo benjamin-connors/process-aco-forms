@@ -289,10 +289,12 @@ if st.button('Process Forms'):
 
 		# add a tile layer
 		folium.TileLayer(
-			tiles='https://tiles.stadiamaps.com/tiles/alidade_satellite/{z}/{x}/{y}{r}.{ext}',
-			name='Stadia Alidade Satellite',
-			attr='&copy; CNES, Distribution Airbus DS, © Airbus DS, © PlanetObserver (Contains Copernicus Data) | &copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-			ext='jpg'
+			tiles='https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+			name='Stadia Alidade Smooth',
+			attr='&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a>, '
+				'&copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>, '
+				'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+			ext='png'
 		).add_to(m)
 
 		# add a box around sample points
