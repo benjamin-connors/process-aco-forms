@@ -62,3 +62,4 @@ read_flag,post_process,2024_v2,2024,2022_v3,2024_gs,2022_v3_gs,2024_alt,tsitika
 ,snow_pit_temp,Snow Pit Measurement : Temperature (°C),Snow Pit Measurement : Temperature (°C),Snow Pit Measurement : Temperature (°C),Snow_Pit_Measurement.Temperature___C_,Snow_Pit_Measurement.Temperature___C_,,snow_pit_temperature
 ,snow_pit_density,Snow Pit Measurement : Density Notes,Snow Pit Measurement : Density Notes,Snow Pit Measurement : Density Notes,Snow_Pit_Measurement.Density_Notes,Snow_Pit_Measurement.Density_Notes,,snow_pit_density
 ,end_time,Survey End Time,Survey End TIme,Survey End TIme,Survey_End_TIme,Survey_End_TIme,,survey_end
+1,other_direction,Other_Direction,,,,,,

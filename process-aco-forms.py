@@ -79,6 +79,10 @@ if st.button('Process Forms'):
 
 		# read gnss file and check for repeat plot_ids
 		df_gnss = pd.read_csv(file_gnss, usecols=['plot_id', 'Easting_m', 'Northing_m'])
+
+		# Remove rows with empty plot_ids
+		df_gnss = df_gnss.dropna(subset=['plot_id'])
+
 		if df_gnss['plot_id'].duplicated().any():
 			st.error('**ERROR:** The provided GNSS file contains multiple entries for at least one plot ID. Please update the GNSS file so that it contains at most 1 set of coordinates for each plot ID.')
 			st.stop()
@@ -207,7 +211,11 @@ if st.button('Process Forms'):
 			st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing cardinal plot distance. These entries have been added to ' + warn_str)
 
 		# get angles and calc coordinates for each data point
-		ang = df["cardinal_dir"].apply(lambda x: cardinal_ang.get(x))
+		ang = np.where(
+			pd.notna(df['other_direction']), 
+			df['other_direction'], 
+			df["cardinal_dir"].apply(lambda x: cardinal_ang.get(x))
+		)		
 		df['Easting_m'] = df['Easting_m'] + np.round(np.cos(np.deg2rad(ang)), 3) * df['distance_m']
 		df['Northing_m'] = df['Northing_m'] + np.round(np.sin(np.deg2rad(ang)), 3) * df['distance_m']
 
