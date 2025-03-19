@@ -12,15 +12,14 @@ import plotly.colors as pc
 
 ### STREAMLIT LAYOUT
 st.set_page_config(
-    layout="wide"
-)
+    layout="wide")
 
 '''
 # CHRL ACO Survey Form Processing
 
-1. Select the study area and the ACO flight/phase number for the forms to be processed.
-2. In Box 1, upload a .csv file containing the Device Magic ACO survey forms to be processed.
-3. In Box 2, upload a .csv containing the GNSS coordinates for each of the plots within the survey.  \n **Important:** GNSS file MUST contain the following headers: 'plot_id', 'easting_m', 'northing_m'
+1. In Box 1, upload a file (.csv or .xlsx) containing the Device Magic ACO survey forms to be processed.
+2. In Box 2, upload a file (.csv or .xlsx) containing the GNSS coordinates for each of the plots within the survey.  \n **Important:** GNSS file MUST contain the following headers: 'plot_id', 'easting_m', 'northing_m'
+3. Select the study area and the survey date for the forms to be processed.
 4. Click the 'Process Forms' button.
 5. Review any warnings and click the "Download Output Files" button.
 '''
@@ -43,7 +42,7 @@ utm_dict = {
     'Russell Creek': 9
 }
 
-mandatory_fields = ['plot_id', 'study_area', 'plot_type', 'cardinal_dir', 'distance_m', '']
+mandatory_fields = ['plot_id', 'study_area', 'plot_type', 'cardinal_dir', 'distance_m']
 
 ### FUNCTIONS
 def add_notprocessed(index, problem):
@@ -78,11 +77,11 @@ if st.button('Process Forms'):
 
         # Define required columns
         output_cols = [
-            "survey_date", "start_time", "study_area", "other_study_area", "users", 
+            "survey_ID", "start_time", "study_area", "other_study_area", "users", 
             "plot_id", "pre_survey_notes", "plot_type", "cardinal_dir", "other_direction", 
-            "distance_m", "custom_distance_m", "sample_type", "scale_type", "depth_cm", "depth_final_cm", 
-            "snow_depth", "multicore", "plot_features", "depth_max", "swe_final", "density",
-            "sample_rating", "obs_notes", "easting_m", "northing_m", "lat", "lon"
+            "distance_m", "custom_distance_m", "sample_type", "scale_type", "multicore", 
+            "plot_features", "snow_depth", "swe_final", "density",
+            "sample_rating", "obs_notes", "easting_m", "northing_m", "lat", "lon", "flag"
         ]
 
         # read dmform file, get column names, get number of rows
@@ -118,11 +117,11 @@ if st.button('Process Forms'):
 
         # initialize processed and notprocessed dataframes with desired fields (add aco flight)
         df = pd.DataFrame(columns=df_fieldnames['post_process'][ix_keep])
-
+        
         # loop fields that we want to keep
         for ii in df_fieldnames['post_process'][ix_keep].index:
             # Check list of possible fieldnames to see if one matches the current file
-            possible_cols = df_fieldnames.iloc[ii, np.in1d(df_fieldnames.iloc[ii, :], dmform_cols)]
+            possible_cols = df_fieldnames.iloc[ii, np.isin(df_fieldnames.iloc[ii, :], dmform_cols)]
             possible_cols = np.unique(possible_cols[possible_cols.isin(df_dmform.columns)])
 
             if len(possible_cols) > 0:
@@ -148,9 +147,12 @@ if st.button('Process Forms'):
                 # If none of the columns contain data, you may want to handle this case
                 st.error(f'**ERROR:** No columns found on the input file that contain data for the field {df_fieldnames["post_process"][ii]}.')
                 st.stop()
+                
+        # enforce formatting
+        df['distance_m'] = pd.to_numeric(df['distance_m'], errors='coerce')
 
         # add survey date col to df 
-        df.insert(0, 'survey_date', survey_date_str)
+        df.insert(0, 'survey_ID', survey_date_str)
         # create not processed df
         df_notprocessed = pd.DataFrame(columns=df.columns)
         df_notprocessed.insert(0,'problem', [])
@@ -159,7 +161,7 @@ if st.button('Process Forms'):
         if (df['study_area'] != study_area).any():
             ix = df['study_area'] != study_area
             add_notprocessed(ix, 'wrong/no study area')
-            st.session_state.warnings.append('Incorrect study area found for some input data. These entries have been added to' + warn_str)
+            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries have the wrong/no study area. These entries have been added to' + warn_str)
             df = df.loc[~ix]
 
         # populate snow_depth (== depth values from both density and depth surveys combined in one field)
@@ -175,33 +177,16 @@ if st.button('Process Forms'):
         swe_both_populated = swe_gscale_populated & swe_swescale_populated
         density_both_populated = density_gscale_populated & density_swescale_populated
         
-        # # Select only the relevant columns from the original DataFrame
-        # relevant_fields = [
-        #     'sample_type', 'swe_final_gscale', 'swe_final_swescale', 
-        #     'density_gscale', 'density_swescale'
-        # ]
-        
-        # # Create df_tmp with the relevant original fields
-        # df_tmp = df[relevant_fields].copy()
-        
-        # # Add boolean fields
-        # df_tmp['swe_gscale_populated'] = swe_gscale_populated
-        # df_tmp['swe_swescale_populated'] = swe_swescale_populated
-        # df_tmp['density_gscale_populated'] = density_gscale_populated
-        # df_tmp['density_swescale_populated'] = density_swescale_populated
-        # df_tmp['swe_both_populated'] = swe_both_populated
-        # df_tmp['density_both_populated'] = density_both_populated
-        
-        # st.dataframe(df_tmp)
-        
         # Initialize empty columns
         df['swe_final'] = np.nan
         df['density'] = np.nan
         
         # Fill only where one column is populated
         df.loc[swe_gscale_populated & ~swe_both_populated, 'swe_final'] = df['swe_final_gscale']
+        df.loc[swe_gscale_populated & ~swe_both_populated, 'scale_type'] = 'Mass'
         df.loc[swe_swescale_populated & ~swe_both_populated, 'swe_final'] = df['swe_final_swescale']
-        
+        df.loc[swe_swescale_populated & ~swe_both_populated, 'scale_type'] = 'SWE'
+
         df.loc[density_gscale_populated & ~density_both_populated, 'density'] = df['density_gscale']
         df.loc[density_swescale_populated & ~density_both_populated, 'density'] = df['density_swescale']
         
@@ -243,7 +228,7 @@ if st.button('Process Forms'):
                 ", ".join(plot_str) + ']. These entries have been added to ' + warn_str)
 
         # add eastings and northings according to plot id
-        df = df.merge(df_gnss, on='plot_id')
+        df = df.merge(df_gnss, on='plot_id', how='left')
         
         # adjust eastings and northings according to sample distance from centre
         # define dictionary containing angles for each cardinal direction
@@ -315,8 +300,7 @@ if st.button('Process Forms'):
             st.warning(":red[**WARNING: DATA HAS FALLEN INTO THE VOID!**\
                 \n There is input data that did not make it into either the processed or not-processed output files.\
                 \n In other words, some of the data has gone missing.\
-                    \n Please contact the maintainer of this application.\
-                    \n You can still download the data that was processed in the meantime, but you have been warned that it is incomplete!]")
+                    \n You can still download the data that was processed, but you have been warned that it is incomplete!]")
                        
         # get summary statistics
         with warnings.catch_warnings():
@@ -337,22 +321,28 @@ if st.button('Process Forms'):
                 df[col] = None
         # Keep only desired columns
         df = df[output_cols]
-                    
+        
+        # add flags
+        ix = ~df['sample_rating'].isin(['Good', 'Excellent'])        
+        df.loc[ix, 'flag'] = 'QUALITY'
+        ix = df['multicore'] == 'yes'
+        df.loc[ix, 'flag'] = 'MULTI'
+
         # zip output files using buffer memory
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "x") as csv_zip:
-            csv_zip.writestr(survey_date_str + '_' + study_area_str + '_fielddata_processed.csv', pd.DataFrame(df).to_csv(index=False))
-            csv_zip.writestr(survey_date_str + '_' +  study_area_str + '_fielddata_summarystats.csv', pd.DataFrame(df_summary).to_csv(index=False))
+            csv_zip.writestr(survey_date_str + '_' + study_area_str + '_snowsurvey_processed.csv', pd.DataFrame(df).to_csv(index=False))
+            csv_zip.writestr(survey_date_str + '_' +  study_area_str + '_snowsurvey_summarystats.csv', pd.DataFrame(df_summary).to_csv(index=False))
             if len(df_notprocessed) > 0:
                 # bump index by 2 to align with input form rows
                 df_notprocessed.index += 2
-                csv_zip.writestr(survey_date_str + '_' +  study_area_str + '_fielddata_NOTprocessed.csv', pd.DataFrame(df_notprocessed).to_csv(index=True, index_label='input_row'))
+                csv_zip.writestr(survey_date_str + '_' +  study_area_str + '_snowsurvey_NOTprocessed.csv', pd.DataFrame(df_notprocessed).to_csv(index=True, index_label='input_row'))
 
         # download button
         st.download_button(
             label="Download Output Files",
             data=buf.getvalue(),
-            file_name=survey_date_str + '_' +  study_area_str + '_fielddata_outputfiles.zip',
+            file_name=survey_date_str + '_' +  study_area_str + '_snowsurvey_outputfiles.zip',
             mime="application/zip",
             )
     
