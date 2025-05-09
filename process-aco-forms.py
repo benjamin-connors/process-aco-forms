@@ -42,7 +42,7 @@ utm_dict = {
     'Russell Creek': 9
 }
 
-mandatory_fields = ['plot_id', 'study_area', 'plot_type', 'cardinal_dir', 'distance_m']
+mandatory_fields = ['study_area', 'plot_type', 'cardinal_dir', 'distance_m']
 
 ### FUNCTIONS
 def add_notprocessed(index, problem):
@@ -84,11 +84,20 @@ if st.button('Process Forms'):
             "sample_rating", "obs_notes", "easting_m", "northing_m", "lat", "lon", "flag"
         ]
 
-        # read dmform file, get column names, get number of rows
+       # Read dmform file, get column names, get number of rows
         if dmform_filename.endswith(".csv"):
-            df_dmform = pd.read_csv(dmform_file)
+            # Decode the binary stream
+            first_line = dmform_file.readline().decode("utf-8")
+            dmform_file.seek(0)  # Reset pointer to start
+        
+            if first_line.startswith("sep="):
+                separator = first_line.split("=")[1].strip()
+                df_dmform = pd.read_csv(dmform_file, sep=separator, skiprows=1)
+            else:
+                df_dmform = pd.read_csv(dmform_file)
         elif dmform_filename.endswith(".xlsx"):
             df_dmform = pd.read_excel(dmform_file)
+        
         dmform_cols = df_dmform.columns
         initial_length = len(df_dmform)
         
@@ -148,6 +157,15 @@ if st.button('Process Forms'):
                 st.error(f'**ERROR:** No columns found on the input file that contain data for the field {df_fieldnames["post_process"][ii]}.')
                 st.stop()
                 
+        # get plot id's
+        id_cols = ['plot_id', 'plot_id_tsi', 'plot_id_cru', 'plot_id_eng', 'plot_id_mv']
+        non_null_counts = df[id_cols].notna().sum(axis=1)
+        if (non_null_counts > 1).any():
+            raise ValueError("Multiple plot_id values found in the same row.")
+        fallback_cols = ['plot_id_tsi', 'plot_id_cru', 'plot_id_eng', 'plot_id_mv']
+        df['plot_id'] = df[['plot_id'] + fallback_cols].bfill(axis=1).iloc[:, 0]
+        df.drop(columns=fallback_cols, inplace=True)
+
         # enforce formatting
         df['distance_m'] = pd.to_numeric(df['distance_m'], errors='coerce')
 
@@ -224,6 +242,7 @@ if st.button('Process Forms'):
             plot_str = np.unique(df.loc[ix, 'plot_id'])
             add_notprocessed(ix, 'plot_id not in gnss')
             df = df.loc[~ix]
+
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries were not provided coordinates in the GNSS file [' +
                 ", ".join(plot_str) + ']. These entries have been added to ' + warn_str)
 
@@ -250,6 +269,8 @@ if st.button('Process Forms'):
             add_notprocessed(ix, 'missing distance')
             df = df.loc[~ix]
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing cardinal plot distance. These entries have been added to ' + warn_str)
+
+        st.dataframe(df)
 
         # get angles and calc coordinates for each data point
         ang = np.where(
@@ -319,14 +340,20 @@ if st.button('Process Forms'):
         for col in output_cols:
             if col not in df.columns:
                 df[col] = None
+        
+        # Add flags with appending
+        df.loc[~df['sample_rating'].isin(['Good', 'Excellent']), 'flag'] = df['flag'].fillna('') + 'QUALITY'
+        df.loc[df['multicore'] == 'yes', 'flag'] = df.apply(
+            lambda row: row['flag'] + ', MULTI' if pd.notna(row['flag']) else 'MULTI', axis=1)
+        
+        df.loc[df['retrieval'] < 60, 'flag'] = df.apply(
+            lambda row: row['flag'] + ', RETRIEVAL < 60' if pd.notna(row['flag']) else 'RETRIEVAL < 60', axis=1)
+        df.loc[df['retrieval'] > 90, 'flag'] = df.apply(
+            lambda row: row['flag'] + ', RETRIEVAL > 90' if pd.notna(row['flag']) else 'RETRIEVAL > 90', axis=1)
+
+        
         # Keep only desired columns
         df = df[output_cols]
-        
-        # add flags
-        ix = ~df['sample_rating'].isin(['Good', 'Excellent'])        
-        df.loc[ix, 'flag'] = 'QUALITY'
-        ix = df['multicore'] == 'yes'
-        df.loc[ix, 'flag'] = 'MULTI'
 
         # zip output files using buffer memory
         buf = io.BytesIO()

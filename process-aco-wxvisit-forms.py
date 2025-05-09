@@ -45,12 +45,14 @@ wxform_cols2read = [
     'Project Name',
     'Russell Creek Substation',
     'Other Station Name',
-    'User ',
+    'User',
     'Snow Course : Add Snow Core : Depth Max (cm)',
     'Snow Course : Add Snow Core : SWE (cm)',
     'Snow Course : Add Snow Core : Density',
     'Snow Course : Add Snow Core : Core Rating',
     'Snow Course : Snow Course Notes',
+    'Snow Course : Add Snow Core : Snow Core #',
+    'Snow Course : Add Snow Core : Retrieval (%)',
     'Snow Course : Add Snow Core : Snow Core #'
 ]
 
@@ -95,7 +97,7 @@ if st.button('Process Forms'):
 
         # Check if the file is CSV (uploaded via Streamlit)
         dmform_filename = wxform_file.name.lower()
-    
+        
         if dmform_filename.endswith(".csv"):
             # Read the first line to check if it contains a separator declaration
             first_line = wxform_file.getvalue().decode('utf-8').splitlines()[0]
@@ -119,7 +121,7 @@ if st.button('Process Forms'):
         # Get the column names and number of rows for reference
         wxform_cols = df_wxform.columns
         initial_length = len(df_wxform)
-        
+                
         # read gnss file
         if gnss_filename.endswith(".csv"):
             df_gnss = pd.read_csv(gnss_file, usecols=['plot_id', 'easting_m', 'northing_m'])
@@ -133,8 +135,7 @@ if st.button('Process Forms'):
             st.error('**ERROR:** The provided GNSS file contains multiple entries for at least one plot ID. Please update the GNSS file so that it contains at most 1 set of coordinates for each plot ID.')
             st.stop()
             
-        # Initialize an empty DataFrame with all the column names
-        # df = pd.DataFrame(columns=output_cols)     
+        # Initialize an empty DataFrame
         df = pd.DataFrame()
         # Apply the condition directly to create the 'plot_id' column
         df_wxform['plot_id'] = df_wxform.apply(
@@ -144,16 +145,17 @@ if st.button('Process Forms'):
         # Now map the values to the DataFrame 'df' (from the columns you're loading)
         df['start_time'] = df_wxform['Job Start Time']
         df['study_area'] = df_wxform['Project Name']
-        df['users'] = df_wxform['User ']
+        df['users'] = df_wxform['User']
         df['snow_depth'] = df_wxform['Snow Course : Add Snow Core : Depth Max (cm)']
         df['swe_final'] = df_wxform['Snow Course : Add Snow Core : SWE (cm)']
         df['density'] = df_wxform['Snow Course : Add Snow Core : Density']
         df['sample_rating'] = df_wxform['Snow Course : Add Snow Core : Core Rating']
         df['obs_notes'] = df_wxform['Snow Course : Snow Course Notes']
         df['plot_id'] = df_wxform['plot_id']
+        df['retrieval'] = df_wxform['Snow Course : Add Snow Core : Retrieval (%)']
+        df['core_number'] = df_wxform['Snow Course : Add Snow Core : Snow Core #']
         df['plot_type'] = 'Snow Course'
         df['sample_type'] = 'Density'
-        
         # set scale type to mass scale for density measurements
         df['scale_type'] = None
         df.loc[df['sample_type'] == 'Density', 'scale_type'] = 'Mass'
@@ -187,12 +189,15 @@ if st.button('Process Forms'):
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing a plot_id. These entries have been added to' + warn_str)
             df = df.loc[~ix]
             
-        # only keep entries with density data
-        if df['density'].isna().any():            
-            ix = df['density'].isna()
-            add_notprocessed(ix, 'no density data')
-            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries do not have density data. These entries have been added to' + warn_str)
+        # onluy keep snow course data 
+        if df[['density', 'snow_depth', 'core_number', 'swe_final']].isna().all(axis=1).any():
+            ix = df[['density', 'snow_depth', 'core_number', 'swe_final']].isna().all(axis=1)
+            add_notprocessed(ix, 'no snow course data')
+            st.session_state.warnings.append(
+                'Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries do not have snow course data. These entries have been added to' + warn_str
+            )
             df = df.loc[~ix]
+
             
         # keep only rows that have coordinates in gnss file
         if any(~np.isin(df['plot_id'], df_gnss['plot_id'])):
@@ -250,12 +255,18 @@ if st.button('Process Forms'):
         for col in output_cols:
             if col not in df.columns:
                 df[col] = None
+        
+        # Add flags with appending
+        df.loc[~df['sample_rating'].isin([4,5]), 'flag'] = df['flag'].fillna('') + 'QUALITY'
+        df.loc[df['multicore'] == 'yes', 'flag'] = df.apply(
+            lambda row: row['flag'] + ', MULTI' if pd.notna(row['flag']) else 'MULTI', axis=1)
+        df.loc[df['retrieval'] < 60, 'flag'] = df.apply(
+            lambda row: row['flag'] + ', RETRIEVAL < 60' if pd.notna(row['flag']) else 'RETRIEVAL < 60', axis=1)
+        df.loc[df['retrieval'] > 90, 'flag'] = df.apply(
+            lambda row: row['flag'] + ', RETRIEVAL > 90' if pd.notna(row['flag']) else 'RETRIEVAL > 90', axis=1)
+        
         # Keep only desired columns
         df = df[output_cols]
-        
-        # add flags
-        ix = df['sample_rating'] <= 3      
-        df.loc[ix, 'flag'] = 'QUALITY'
 
         # zip output files using buffer memory
         buf = io.BytesIO()

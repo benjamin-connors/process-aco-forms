@@ -2,19 +2,22 @@ import pandas as pd
 import os
 
 # Load the first line to check for 'sep=' declaration
-input_file_path = 'C:/Users/oconnorb/projects/process-aco-forms/test_data/Mar2025/ACO Snow Survey Plot 2022_v3.csv'  # Replace with your actual input file path
+input_file_path = 'S:/ACO/2025/Tsitika/field_data/20250404/20250404_TSI_ACOFORM_v2022_edited.xlsx'  # Replace with your actual input file path
 
-# Open the file and check for the 'sep=' line
-with open(input_file_path, 'r') as file:
-    first_line = file.readline().strip()
-
-# Check if the first line contains a separator declaration
-if first_line.startswith('sep='):
-    separator = first_line.split('=')[1].strip()  # Extract the separator from the first line
-    v2022_df = pd.read_csv(input_file_path, sep=separator, skiprows=1)  # Skip the first line
+# Check file extension
+if input_file_path.lower().endswith('.xlsx'):
+    v2022_df = pd.read_excel(input_file_path)
 else:
-    separator = ','  # Default separator
-    v2022_df = pd.read_csv(input_file_path, sep=separator)  # Read the CSV normally
+    with open(input_file_path, 'r', encoding='utf-8') as f:
+        first_line = f.readline()
+
+    # Check if the first line contains a separator declaration
+    if first_line.startswith('sep='):
+        separator = first_line.split('=')[1].strip()  # Extract the separator from the first line
+        v2022_df = pd.read_csv(input_file_path, sep=separator, skiprows=1)  # Skip the first line
+    else:
+        separator = ','  # Default separator
+        v2022_df = pd.read_csv(input_file_path, sep=separator)  # Read the CSV normally
 
 # List of all v2025 headers in the correct order
 v2025_headers = [
