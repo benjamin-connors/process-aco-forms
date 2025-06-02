@@ -9,7 +9,8 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import plotly.colors as pc
-from handle_no_snow_entries import add_to_df_notprocessed, process_no_snow_entries
+# from handle_no_snow_entries import add_to_df_notprocessed, process_no_snow_entries
+from processing_utils import add_to_df_notprocessed
 
 ### STREAMLIT LAYOUT ###
 st.set_page_config(
