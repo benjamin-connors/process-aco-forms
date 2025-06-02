@@ -9,8 +9,9 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import plotly.colors as pc
+from handle_no_snow_entries import add_to_df_notprocessed, process_no_snow_entries
 
-### STREAMLIT LAYOUT
+### STREAMLIT LAYOUT ###
 st.set_page_config(
     layout="wide")
 
@@ -44,16 +45,7 @@ utm_dict = {
 
 mandatory_fields = ['study_area', 'plot_type', 'cardinal_dir', 'distance_m']
 
-### FUNCTIONS
-def add_notprocessed(index, problem):
-    global df, df_notprocessed
-    if len(index) != len(df):
-        raise ValueError("Boolean index length must match the length of DataFrame 'df'")
-    rows_to_add = df[index].copy()
-    rows_to_add['problem'] = problem
-    df_notprocessed = pd.concat([df_notprocessed, rows_to_add])
-
-### MAIN PROGRAM PROCESSING
+### MAIN PROGRAM PROCESSING ###
 if st.button('Process Forms'):
     # check for input files
     if dmform_file is None or gnss_file is None:
@@ -97,7 +89,7 @@ if st.button('Process Forms'):
                 df_dmform = pd.read_csv(dmform_file)
         elif dmform_filename.endswith(".xlsx"):
             df_dmform = pd.read_excel(dmform_file)
-        
+                    
         dmform_cols = df_dmform.columns
         initial_length = len(df_dmform)
         
@@ -156,7 +148,7 @@ if st.button('Process Forms'):
                 # If none of the columns contain data, you may want to handle this case
                 st.error(f'**ERROR:** No columns found on the input file that contain data for the field {df_fieldnames["post_process"][ii]}.')
                 st.stop()
-                
+                                                
         # get plot id's
         id_cols = ['plot_id', 'plot_id_tsi', 'plot_id_cru', 'plot_id_eng', 'plot_id_mv']
         non_null_counts = df[id_cols].notna().sum(axis=1)
@@ -168,7 +160,28 @@ if st.button('Process Forms'):
 
         # enforce formatting
         df['distance_m'] = pd.to_numeric(df['distance_m'], errors='coerce')
-
+        
+        # generate 'zero' measurements for 'no snow' plots
+        # Identify plots marked as "no snow"
+        no_snow_ix = df["is_there_snow"].str.lower() == "no"
+        
+        # remove and flag any no-snow entries that have real data
+        has_real_measurements = (
+            (df["depth_cm"].fillna(0) > 0) |
+            (df["depth_final_cm"].fillna(0) > 0) |
+            (df["density_gscale"].fillna(0) > 0) |
+            (df["density_swescale"].fillna(0) > 0) |
+            (df["swe_final_gscale"].fillna(0) > 0) |
+            (df["swe_final_swescale"].fillna(0) > 0)
+        )
+        ix = no_snow_ix & has_real_measurements
+        if ix.any():
+            add_to_df_notprocessed(ix, "no snow but real measurements entered")
+            st.session_state.warnings.append(
+                f"Some [{ix.sum()}/{len(df)}] entries are marked 'no snow' but contain real measurement data. These entries have been added to {warn_str}."
+            )
+            df = df.loc[~ix]       
+                    
         # add survey date col to df 
         df.insert(0, 'survey_ID', survey_date_str)
         # create not processed df
@@ -178,13 +191,13 @@ if st.button('Process Forms'):
         # only keep entries for selected study area
         if (df['study_area'] != study_area).any():
             ix = df['study_area'] != study_area
-            add_notprocessed(ix, 'wrong/no study area')
+            add_to_df_notprocessed(ix, 'wrong/no study area')
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries have the wrong/no study area. These entries have been added to' + warn_str)
             df = df.loc[~ix]
-
+            
         # populate snow_depth (== depth values from both density and depth surveys combined in one field)
         snow_depth = np.maximum(df['depth_final_cm'].fillna(-np.inf), df['depth_max'].fillna(-np.inf))
-        snow_depth = pd.Series(snow_depth).replace(-np.inf, np.nan)
+        snow_depth = pd.Series(snow_depth).replace(-np.inf, np.nan)  
         df.insert(df.columns.get_loc('multicore'), 'snow_depth', snow_depth)
         
         # populate density and SWE (take measurements from both mass scales and swe scales)
@@ -198,7 +211,8 @@ if st.button('Process Forms'):
         # Initialize empty columns
         df['swe_final'] = np.nan
         df['density'] = np.nan
-        
+        df['scale_type'] = np.nan
+
         # Fill only where one column is populated
         df.loc[swe_gscale_populated & ~swe_both_populated, 'swe_final'] = df['swe_final_gscale']
         df.loc[swe_gscale_populated & ~swe_both_populated, 'scale_type'] = 'Mass'
@@ -211,12 +225,12 @@ if st.button('Process Forms'):
         # add any rows where both mass-scale and swe-scale measurements exist to not processed
         if any(swe_both_populated | density_both_populated):
             ix = swe_both_populated | density_both_populated
-            add_notprocessed(ix, 'contains both mass-scale and swe-scale measurements')
+            add_to_df_notprocessed(ix, 'contains both mass-scale and swe-scale measurements')
             df = df.loc[~ix]
             st.session_state.warnings.append(
                 'Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries contain both mass-scale and swe-scale measurements. '
                 'These entries have been added to ' + warn_str)
-
+            
         # add distance_to_centre for centre plots (sometimes missing)
         df.loc[df['cardinal_dir'] == 'Centre', 'distance_m'] = 0
 
@@ -228,7 +242,7 @@ if st.button('Process Forms'):
                 (pd.isnull(df['distance_m']) & pd.isnull(df['custom_distance_m']))
             
             plot_str = np.unique(df.loc[ix, 'plot_id'])
-            add_notprocessed(ix, 'missing direction or distance data')
+            add_to_df_notprocessed(ix, 'missing direction or distance data')
             df = df.loc[~ix]
             
             st.session_state.warnings.append(
@@ -240,7 +254,7 @@ if st.button('Process Forms'):
         if any(~np.isin(df['plot_id'], df_gnss['plot_id'])):
             ix = ~np.isin(df['plot_id'], df_gnss['plot_id'])
             plot_str = np.unique(df.loc[ix, 'plot_id'])
-            add_notprocessed(ix, 'plot_id not in gnss')
+            add_to_df_notprocessed(ix, 'plot_id not in gnss')
             df = df.loc[~ix]
 
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries were not provided coordinates in the GNSS file [' +
@@ -266,18 +280,17 @@ if st.button('Process Forms'):
         if any(np.isnan(df['distance_m'])):
             ix = np.isnan(df['distance_m'])
             df.loc[ix, ['easting_m', 'northing_m']] = None
-            add_notprocessed(ix, 'missing distance')
+            add_to_df_notprocessed(ix, 'missing distance')
             df = df.loc[~ix]
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing cardinal plot distance. These entries have been added to ' + warn_str)
-
-        st.dataframe(df)
 
         # get angles and calc coordinates for each data point
         ang = np.where(
             pd.notna(df['other_direction']), 
             df['other_direction'], 
             df["cardinal_dir"].apply(lambda x: cardinal_ang.get(x))
-        )        
+        )
+        
         ang = np.asarray(ang, dtype=float)
         df['easting_m'] = df['easting_m'] + np.round(np.cos(np.deg2rad(ang)), 3) * df['distance_m']
         df['northing_m'] = df['northing_m'] + np.round(np.sin(np.deg2rad(ang)), 3) * df['distance_m']
@@ -285,7 +298,7 @@ if st.button('Process Forms'):
         # remove nonsense/zero-coordinates
         if any((df['easting_m'] < 100) | (df['northing_m'] < 100) | (df['easting_m'].isnull()) | (df['northing_m'].isnull())):
             ix = (df['easting_m'] < 100) | (df['northing_m'] < 100) | (pd.isnull(df['easting_m'])) | (pd.isnull(df['northing_m']))
-            add_notprocessed(ix, 'bad coordinates')
+            add_to_df_notprocessed(ix, 'bad coordinates')
             df = df.loc[~ix]
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries were given bad coordinates (check GNSS file). These entries have been added to ' + warn_str)
 
@@ -296,7 +309,7 @@ if st.button('Process Forms'):
         # missing snow_depth
         if any(np.isnan(df['snow_depth'])):
             ix = np.isnan(df['snow_depth'])
-            add_notprocessed(ix, 'missing snow depth')
+            add_to_df_notprocessed(ix, 'missing snow depth')
             df = df.loc[~ix]
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing snow depth. These entries have been added to ' + warn_str)
 
