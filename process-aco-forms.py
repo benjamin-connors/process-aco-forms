@@ -9,6 +9,7 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import plotly.colors as pc
+from handle_no_snow_entries import handle_no_snow_entries
 # from processing_utils import add_to_df_notprocessed
 
 ### STREAMLIT LAYOUT ###
@@ -169,27 +170,6 @@ if st.button('Process Forms'):
 
         # enforce formatting
         df['distance_m'] = pd.to_numeric(df['distance_m'], errors='coerce')
-        
-        # generate 'zero' measurements for 'no snow' plots
-        # Identify plots marked as "no snow"
-        no_snow_ix = df["is_there_snow"].str.lower() == "no"
-        
-        # remove and flag any no-snow entries that have real data
-        has_real_measurements = (
-            (df["depth_cm"].fillna(0) > 0) |
-            (df["depth_final_cm"].fillna(0) > 0) |
-            (df["density_gscale"].fillna(0) > 0) |
-            (df["density_swescale"].fillna(0) > 0) |
-            (df["swe_final_gscale"].fillna(0) > 0) |
-            (df["swe_final_swescale"].fillna(0) > 0)
-        )
-        ix = no_snow_ix & has_real_measurements
-        if ix.any():
-            add_to_df_notprocessed(ix, "no snow but real measurements entered")
-            st.session_state.warnings.append(
-                f"Some [{ix.sum()}/{len(df)}] entries are marked 'no snow' but contain real measurement data. These entries have been added to {warn_str}."
-            )
-            df = df.loc[~ix]       
                     
         # add survey date col to df 
         df.insert(0, 'survey_ID', survey_date_str)
@@ -203,6 +183,16 @@ if st.button('Process Forms'):
             add_to_df_notprocessed(ix, 'wrong/no study area')
             st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries have the wrong/no study area. These entries have been added to' + warn_str)
             df = df.loc[~ix]
+            
+        # generate 'zero' measurements for 'no snow' plots
+        df, df_notprocessed = handle_no_snow_entries(
+            df,
+            df_notprocessed,
+            add_to_df_notprocessed,
+            warn_str,
+            study_area_str,
+            str(survey_date.year)
+        )
             
         # populate snow_depth (== depth values from both density and depth surveys combined in one field)
         snow_depth = np.maximum(df['depth_final_cm'].fillna(-np.inf), df['depth_max'].fillna(-np.inf))
@@ -339,7 +329,7 @@ if st.button('Process Forms'):
                 st.warning('Warning ' + str(ii+1) + ': ' + str(warn_str))
 
         # HAS DATA FALLEN THROUGH THE GAPS?
-        if (len(df) + len(df_notprocessed)) != initial_length:
+        if (len(df) + len(df_notprocessed)) < initial_length:
             st.warning(":red[**WARNING: DATA HAS FALLEN INTO THE VOID!**\
                 \n There is input data that did not make it into either the processed or not-processed output files.\
                 \n In other words, some of the data has gone missing.\
