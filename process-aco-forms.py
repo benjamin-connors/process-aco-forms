@@ -9,7 +9,7 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import plotly.colors as pc
-from processing_utils import add_to_df_notprocessed
+# from processing_utils import add_to_df_notprocessed
 
 ### STREAMLIT LAYOUT ###
 st.set_page_config(
@@ -44,6 +44,15 @@ utm_dict = {
 }
 
 mandatory_fields = ['study_area', 'plot_type', 'cardinal_dir', 'distance_m']
+
+### FUNCTIONS
+def add_to_df_notprocessed(index, problem):
+    global df, df_notprocessed
+    if len(index) != len(df):
+        raise ValueError("Boolean index length must match the length of DataFrame 'df'")
+    rows_to_add = df[index].copy()
+    rows_to_add['problem'] = problem
+    df_notprocessed = pd.concat([df_notprocessed, rows_to_add])
 
 ### MAIN PROGRAM PROCESSING ###
 if st.button('Process Forms'):
@@ -240,7 +249,7 @@ if st.button('Process Forms'):
             
             ix = (pd.isnull(df['cardinal_dir']) & pd.isnull(df['other_direction'])) | \
                 (pd.isnull(df['distance_m']) & pd.isnull(df['custom_distance_m']))
-            
+                            
             plot_str = np.unique(df.loc[ix, 'plot_id'])
             add_to_df_notprocessed(ix, 'missing direction or distance data')
             df = df.loc[~ix]
