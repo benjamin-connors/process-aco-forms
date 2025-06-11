@@ -9,7 +9,7 @@ import pandas as pd
 import streamlit as st
 
 def add_to_df_notprocessed(df_main: pd.DataFrame,
-                     df_notprocessed: pd.DataFrame,
+                     df_notprocessed: pd.DataFrame, 
                      index: pd.Series,
                      problem: str) -> pd.DataFrame:
     """
