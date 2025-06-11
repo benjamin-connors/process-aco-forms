@@ -8,3 +8,9 @@
 *testing*
 ecosystem*
 *pyproject*
+*pycache*
+append-filt-precip-to-sergeys.py
+get-aco-met-data.py
+get-timeseries-csv.py
+get-values-for-dates.py
+old_version.py
