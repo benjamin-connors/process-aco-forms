@@ -16,6 +16,15 @@ def handle_no_snow_entries(df, df_notprocessed, add_to_df_notprocessed, warn_str
     - Generate zero-value rows for depths and densities.
     - Drop original 'no snow' summary row.
     """
+    
+    # Study Area Dict
+    study_area_names = {
+    "CRU": "Cruickshank",
+    "TSI": "Tsitika",
+    "MV": "Metro Vancouver",
+    "ENG": "Englishman"
+    }
+    
     # Step 1: Remove invalid 'no snow' rows with actual values
     no_snow_ix = df["is_there_snow"].str.lower() == "no"
     has_real_measurements = (
@@ -38,7 +47,7 @@ def handle_no_snow_entries(df, df_notprocessed, add_to_df_notprocessed, warn_str
     # Step 2: Load plot features file
     filename = f"{survey_year}_{study_area}_ACO_PlotFeatures.xlsx"
     plot_features_filepath = os.path.join(
-        r"S:\ACO\plot_locations", str(survey_year), filename
+        r"S:\ACO\plot_locations", str(survey_year), study_area_names.get(study_area), filename
     )
     df_pf = pd.read_excel(
         plot_features_filepath,
