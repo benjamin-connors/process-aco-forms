@@ -44,16 +44,18 @@ def handle_no_snow_entries(df, df_notprocessed, add_to_df_notprocessed, warn_str
         )
         df = df.loc[~ix]
 
-    # Step 2: Load plot features file
+    # Step 2: Load plot features file using relative path (no subfolders)
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    plot_features_dir = os.path.join(project_root, "plot_features")
     filename = f"{survey_year}_{study_area}_ACO_PlotFeatures.xlsx"
-    plot_features_filepath = os.path.join(
-        r"S:\ACO\plot_locations", str(survey_year), study_area_names.get(study_area), filename
-    )
+    plot_features_filepath = os.path.join(plot_features_dir, filename)
+    
     df_pf = pd.read_excel(
         plot_features_filepath,
         dtype={"plot_id": str, "cardinal_dir": str, "other_direction": str}
     )
     df_pf["distance_m"] = df_pf["distance_m"].astype(float)
+
 
     # Step 3: Generate new rows for valid no-snow plots
     cardinal_dirs = ["N", "S", "E", "W"]
