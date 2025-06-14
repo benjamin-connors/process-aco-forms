@@ -38,7 +38,7 @@ def handle_no_snow_entries(df, df_notprocessed, add_to_df_notprocessed, warn_str
     ix = no_snow_ix & has_real_measurements
 
     if ix.any():
-        add_to_df_notprocessed(df, df_notprocessed, ix, "no snow but real measurements entered")
+        add_to_df_notprocessed(ix, "no snow but real measurements entered")
         st.session_state.warnings.append(
             f"Some [{ix.sum()}/{len(df)}] entries are marked 'no snow' but contain real measurement data. These entries have been added to {warn_str}."
         )
