@@ -49,11 +49,18 @@ mandatory_fields = ['study_area', 'plot_type', 'cardinal_dir', 'distance_m']
 ### FUNCTIONS
 def add_to_df_notprocessed(index, problem):
     global df, df_notprocessed
-    if len(index) != len(df):
-        raise ValueError("Boolean index length must match the length of DataFrame 'df'")
-    rows_to_add = df[index].copy()
+    
+    # Check if index is boolean mask matching df length
+    if not isinstance(index, (pd.Series, np.ndarray)) or len(index) != len(df):
+        raise ValueError("Index must be a boolean mask matching the length of df")
+    
+    # Select rows where mask is True
+    rows_to_add = df.loc[index].copy()
     rows_to_add['problem'] = problem
-    df_notprocessed = pd.concat([df_notprocessed, rows_to_add])
+    
+    # Concatenate with df_notprocessed
+    df_notprocessed = pd.concat([df_notprocessed, rows_to_add], ignore_index=True)
+
 
 ### MAIN PROGRAM PROCESSING ###
 if st.button('Process Forms'):
