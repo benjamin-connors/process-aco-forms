@@ -118,7 +118,7 @@ if st.button('Process Forms'):
 
         # initialize processed and notprocessed dataframes with desired fields (add aco flight)
         df = pd.DataFrame(columns=df_fieldnames['post_process'][ix_keep])
-        
+
         # loop fields that we want to keep
         for ii in df_fieldnames['post_process'][ix_keep].index:
             # Check list of possible fieldnames to see if one matches the current file
@@ -150,12 +150,21 @@ if st.button('Process Forms'):
                 st.stop()
                                                 
         # get plot id's
-        id_cols = ['plot_id', 'plot_id_tsi', 'plot_id_cru', 'plot_id_eng', 'plot_id_mv']
-        non_null_counts = df[id_cols].notna().sum(axis=1)
-        if (non_null_counts > 1).any():
+        id_cols = ['plot_id', 'plot_id_tsi', 'plot_id_cru', 'plot_id_eng', 'plot_id_mv',
+                   'plot_id_tsi_other', 'plot_id_cru_other', 'plot_id_eng_other', 'plot_id_mv_other']
+        fallback_cols = id_cols[1:]
+
+        # Normalize 'Other' to NaN in all relevant columns
+        for col in id_cols:
+            df[col] = df[col].replace(r'(?i)^other$', np.nan, regex=True)  # case-insensitive replace
+        # Count how many valid (non-null) values per row across id_cols
+        valid_counts = df[id_cols].notna().sum(axis=1)
+        # Raise error only if multiple valid values exist in the same row
+        if (valid_counts > 1).any():
             raise ValueError("Multiple plot_id values found in the same row.")
-        fallback_cols = ['plot_id_tsi', 'plot_id_cru', 'plot_id_eng', 'plot_id_mv']
+        # Backfill plot_id with the first available fallback value
         df['plot_id'] = df[['plot_id'] + fallback_cols].bfill(axis=1).iloc[:, 0]
+        # Drop fallback columns after filling plot_id
         df.drop(columns=fallback_cols, inplace=True)
 
         # enforce formatting
