@@ -9,8 +9,7 @@ import streamlit as st
 import folium
 from streamlit_folium import st_folium
 import plotly.colors as pc
-from handle_no_snow_entries import handle_no_snow_entries
-# from processing_utils import add_to_df_notprocessed
+from project_utils import process_no_snow_entries_acoform, filter_to_not_processed, convert_sample_rating
 
 ### STREAMLIT LAYOUT ###
 st.set_page_config(
@@ -26,8 +25,8 @@ st.set_page_config(
 5. Review any warnings and click the "Download Output Files" button.
 '''
 # Inputs
-dmform_file = st.file_uploader('**Upload .CSV Containing Device Magic ACO Survey Forms Here**')
-gnss_file = st.file_uploader('Upload .CSV Containing GNSS Info Here')
+dmform_file = st.file_uploader('**Upload File (.xlsx, .csv) Containing Device Magic ACO Survey Forms Here**')
+gnss_file = st.file_uploader('Upload File (.xlsx, .csv) Containing GNSS Info Here')
 study_area = st.selectbox("Select Study Area", ('Cruickshank', 'Englishman', 'Metro Vancouver', 'Russell Creek'), index=None)
 survey_date = st.date_input("Select Survey Date", value=None, format="YYYY/MM/DD")
 
@@ -45,22 +44,6 @@ utm_dict = {
 }
 
 mandatory_fields = ['study_area', 'plot_type', 'cardinal_dir', 'distance_m']
-
-### FUNCTIONS
-def add_to_df_notprocessed(index, problem):
-    global df, df_notprocessed
-    
-    # Check if index is boolean mask matching df length
-    if not isinstance(index, (pd.Series, np.ndarray)) or len(index) != len(df):
-        raise ValueError("Index must be a boolean mask matching the length of df")
-    
-    # Select rows where mask is True
-    rows_to_add = df.loc[index].copy()
-    rows_to_add['problem'] = problem
-    
-    # Concatenate with df_notprocessed
-    df_notprocessed = pd.concat([df_notprocessed, rows_to_add], ignore_index=True)
-
 
 ### MAIN PROGRAM PROCESSING ###
 if st.button('Process Forms'):
@@ -90,7 +73,7 @@ if st.button('Process Forms'):
             "plot_id", "pre_survey_notes", "plot_type", "cardinal_dir", "other_direction", 
             "distance_m", "custom_distance_m", "sample_type", "scale_type", "multicore", 
             "plot_features", "snow_depth", "swe_final", "density",
-            "sample_rating", "obs_notes", "easting_m", "northing_m", "lat", "lon", "flag"
+            "sample_rating", "retrieval", "obs_notes", "easting_m", "northing_m", "lat", "lon", "flag"
         ]
 
        # Read dmform file, get column names, get number of rows
@@ -117,9 +100,9 @@ if st.button('Process Forms'):
 
         # read gnss file and check for repeat plot_ids
         if gnss_filename.endswith(".csv"):
-            df_gnss = pd.read_csv(gnss_file, usecols=['plot_id', 'easting_m', 'northing_m'])
+            df_gnss = pd.read_csv(gnss_file, usecols=['plot_id', 'easting_m', 'northing_m', 'color_code'])
         elif gnss_filename.endswith(".xlsx"):
-            df_gnss = pd.read_excel(gnss_file, usecols=['plot_id', 'easting_m', 'northing_m'])
+            df_gnss = pd.read_excel(gnss_file, usecols=['plot_id', 'easting_m', 'northing_m', 'color_code'])
 
         # Remove rows with empty plot_ids
         df_gnss = df_gnss.dropna(subset=['plot_id'])
@@ -187,15 +170,14 @@ if st.button('Process Forms'):
         # only keep entries for selected study area
         if (df['study_area'] != study_area).any():
             ix = df['study_area'] != study_area
-            add_to_df_notprocessed(ix, 'wrong/no study area')
-            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries have the wrong/no study area. These entries have been added to' + warn_str)
-            df = df.loc[~ix]
+            df, df_notprocessed, n_flagged = filter_to_not_processed(df, df_notprocessed, ix, 'wrong/no study area')
+            st.session_state.warnings.append('Some [' + str(n_flagged) + '/' + str(initial_length) + '] entries have the wrong/no study area. These entries have been added to' + warn_str)
             
         # generate 'zero' measurements for 'no snow' plots
-        df, df_notprocessed = handle_no_snow_entries(
+        df, df_notprocessed = process_no_snow_entries_acoform(
             df,
             df_notprocessed,
-            add_to_df_notprocessed,
+            filter_to_not_processed,
             warn_str,
             study_area_str,
             str(survey_date.year)
@@ -215,9 +197,9 @@ if st.button('Process Forms'):
         density_both_populated = density_gscale_populated & density_swescale_populated
         
         # Initialize empty columns
-        df['swe_final'] = np.nan
-        df['density'] = np.nan
-        df['scale_type'] = np.nan
+        df['swe_final'] = pd.Series(dtype='float64')
+        df['density'] = pd.Series(dtype='float64')
+        df['scale_type'] = pd.Series(dtype='string')
 
         # Fill only where one column is populated
         df.loc[swe_gscale_populated & ~swe_both_populated, 'swe_final'] = df['swe_final_gscale']
@@ -231,10 +213,9 @@ if st.button('Process Forms'):
         # add any rows where both mass-scale and swe-scale measurements exist to not processed
         if any(swe_both_populated | density_both_populated):
             ix = swe_both_populated | density_both_populated
-            add_to_df_notprocessed(ix, 'contains both mass-scale and swe-scale measurements')
-            df = df.loc[~ix]
+            df, df_notprocessed, n_flagged = filter_to_not_processed(df, df_notprocessed, ix, 'contains both mass-scale and swe-scale measurements')
             st.session_state.warnings.append(
-                'Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries contain both mass-scale and swe-scale measurements. '
+                'Some [' + str(n_flagged) + '/' + str(initial_length) + '] entries contain both mass-scale and swe-scale measurements. '
                 'These entries have been added to ' + warn_str)
             
         # add distance_to_centre for centre plots (sometimes missing)
@@ -248,11 +229,9 @@ if st.button('Process Forms'):
                 (pd.isnull(df['distance_m']) & pd.isnull(df['custom_distance_m']))
                             
             plot_str = np.unique(df.loc[ix, 'plot_id'])
-            add_to_df_notprocessed(ix, 'missing direction or distance data')
-            df = df.loc[~ix]
-            
+            df, df_notprocessed, n_flagged = filter_to_not_processed(df, df_notprocessed, ix, 'missing direction or distance data')
             st.session_state.warnings.append(
-                'Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries do not contain both required direction and distance data. '
+                'Some [' + str(n_flagged) + '/' + str(initial_length) + '] entries do not contain both required direction and distance data. '
                 'These entries have been added to ' + warn_str + ' for the following plots: (' + ", ".join(plot_str) + ').'
             )
 
@@ -260,10 +239,8 @@ if st.button('Process Forms'):
         if any(~np.isin(df['plot_id'], df_gnss['plot_id'])):
             ix = ~np.isin(df['plot_id'], df_gnss['plot_id'])
             plot_str = np.unique(df.loc[ix, 'plot_id'])
-            add_to_df_notprocessed(ix, 'plot_id not in gnss')
-            df = df.loc[~ix]
-
-            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries were not provided coordinates in the GNSS file [' +
+            df, df_notprocessed, n_flagged = filter_to_not_processed(df, df_notprocessed, ix, 'plot_id not in gnss')
+            st.session_state.warnings.append('Some [' + str(n_flagged) + '/' + str(initial_length) + '] entries were not provided coordinates in the GNSS file [' +
                 ", ".join(plot_str) + ']. These entries have been added to ' + warn_str)
 
         # add eastings and northings according to plot id
@@ -286,9 +263,8 @@ if st.button('Process Forms'):
         if any(np.isnan(df['distance_m'])):
             ix = np.isnan(df['distance_m'])
             df.loc[ix, ['easting_m', 'northing_m']] = None
-            add_to_df_notprocessed(ix, 'missing distance')
-            df = df.loc[~ix]
-            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing cardinal plot distance. These entries have been added to ' + warn_str)
+            df, df_notprocessed, n_flagged = filter_to_not_processed(df, df_notprocessed, ix, 'missing distance')
+            st.session_state.warnings.append('Some [' + str(n_flagged) + '/' + str(initial_length) + '] entries are missing cardinal plot distance. These entries have been added to ' + warn_str)
 
         # get angles and calc coordinates for each data point
         ang = np.where(
@@ -304,20 +280,39 @@ if st.button('Process Forms'):
         # remove nonsense/zero-coordinates
         if any((df['easting_m'] < 100) | (df['northing_m'] < 100) | (df['easting_m'].isnull()) | (df['northing_m'].isnull())):
             ix = (df['easting_m'] < 100) | (df['northing_m'] < 100) | (pd.isnull(df['easting_m'])) | (pd.isnull(df['northing_m']))
-            add_to_df_notprocessed(ix, 'bad coordinates')
-            df = df.loc[~ix]
-            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries were given bad coordinates (check GNSS file). These entries have been added to ' + warn_str)
+            df, df_notprocessed, n_flagged = filter_to_not_processed(df, df_notprocessed, ix, 'bad coordinates')
+            st.session_state.warnings.append('Some [' + str(n_flagged) + '/' + str(initial_length) + '] entries were given bad coordinates (check GNSS file). These entries have been added to ' + warn_str)
 
         # get lat/lons
         (df['lat'], df['lon']) = utm.to_latlon(df['easting_m'], df['northing_m'], utm_dict[study_area], 'U')
 
-        ### DATA/PROCESSING CHECKS
+        ### DATA/PROCESSING CHECKS AND DF CLEANUP
         # missing snow_depth
         if any(np.isnan(df['snow_depth'])):
             ix = np.isnan(df['snow_depth'])
-            add_to_df_notprocessed(ix, 'missing snow depth')
-            df = df.loc[~ix]
-            st.session_state.warnings.append('Some [' + str(sum(ix)) + '/' + str(initial_length) + '] entries are missing snow depth. These entries have been added to ' + warn_str)
+            df, df_notprocessed, n_flagged = filter_to_not_processed(df, df_notprocessed, ix, 'missing snow depth')
+            st.session_state.warnings.append('Some [' + str(n_flagged) + '/' + str(initial_length) + '] entries are missing snow depth. These entries have been added to ' + warn_str)
+            
+        # Convert descriptive sample ratings to numeric
+        df['sample_rating'] = df['sample_rating'].apply(convert_sample_rating)
+        
+        # Add missing columns to df (empty)
+        for col in output_cols:
+            if col not in df.columns:
+                df[col] = None
+                
+        # Remove unwanted columns
+        df = df[output_cols]
+        
+        # Add flags
+        df.loc[df['sample_rating'] < 3, 'flag'] = df['flag'].fillna('') + 'QUALITY'
+        df.loc[df['multicore'] == 'yes', 'flag'] = df.apply(
+            lambda row: row['flag'] + ', MULTI' if pd.notna(row['flag']) else 'MULTI', axis=1)
+        
+        df.loc[df['retrieval'] < 60, 'flag'] = df.apply(
+            lambda row: row['flag'] + ', RETRIEVAL < 60' if pd.notna(row['flag']) else 'RETRIEVAL < 60', axis=1)
+        df.loc[df['retrieval'] > 90, 'flag'] = df.apply(
+            lambda row: row['flag'] + ', RETRIEVAL > 90' if pd.notna(row['flag']) else 'RETRIEVAL > 90', axis=1)
 
         # update session state variables
         st.session_state.data_processed = True
@@ -342,7 +337,14 @@ if st.button('Process Forms'):
                 \n In other words, some of the data has gone missing.\
                     \n You can still download the data that was processed, but you have been warned that it is incomplete!]")
                        
-        # get summary statistics
+        # Print multicore warning and notes
+        multicore_rows = df[df['multicore'].str.lower() == 'yes']
+        if not multicore_rows.empty:
+            st.warning("⚠️ The processed file contains multicore samples. Please review the observation notes below and ensure that any necessary manual edits have been applied. Row numbers corresponds to row in processed file.")
+            for idx, note in multicore_rows['obs_notes'].items():
+                st.markdown(f"**Row {idx}:** {note}")
+                       
+        # calculate summary statistics dataframe
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", category=RuntimeWarning)
             # Calculate summary stats without filling or removing NaN values
@@ -351,29 +353,9 @@ if st.button('Process Forms'):
                 "density": ["count", "mean", "std"],
                 "swe_final": ["mean", "median", "std"],
             }).reset_index()
-
             # Rename columns for better readability
             df_summary.columns = ['_'.join(col).strip() for col in df_summary.columns.values]
-            
-        # Add missing columns (empty)
-        for col in output_cols:
-            if col not in df.columns:
-                df[col] = None
         
-        # Add flags with appending
-        df.loc[~df['sample_rating'].isin(['Good', 'Excellent']), 'flag'] = df['flag'].fillna('') + 'QUALITY'
-        df.loc[df['multicore'] == 'yes', 'flag'] = df.apply(
-            lambda row: row['flag'] + ', MULTI' if pd.notna(row['flag']) else 'MULTI', axis=1)
-        
-        df.loc[df['retrieval'] < 60, 'flag'] = df.apply(
-            lambda row: row['flag'] + ', RETRIEVAL < 60' if pd.notna(row['flag']) else 'RETRIEVAL < 60', axis=1)
-        df.loc[df['retrieval'] > 90, 'flag'] = df.apply(
-            lambda row: row['flag'] + ', RETRIEVAL > 90' if pd.notna(row['flag']) else 'RETRIEVAL > 90', axis=1)
-
-        
-        # Keep only desired columns
-        df = df[output_cols]
-
         # zip output files using buffer memory
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "x") as csv_zip:
@@ -400,14 +382,13 @@ if st.button('Process Forms'):
         center_lon = (min_lon + max_lon) / 2
         m = folium.Map(location=[center_lat, center_lon], zoom_start=14)
 
-        # add a tile layer
+        # Add satellite imagery tile layer
         folium.TileLayer(
-            tiles='https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-            name='Stadia Alidade Smooth',
-            attr='&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a>, '
-                '&copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a>, '
-                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-            ext='png'
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='Tiles &copy; Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+            name='Esri World Imagery',
+            overlay=False,
+            control=True
         ).add_to(m)
 
         # add a box around sample points
@@ -426,9 +407,19 @@ if st.button('Process Forms'):
        # Determine unique combinations of 'plot_id', 'cardinal_dir', and 'distance_m'
         unique_combinations = df.drop_duplicates(subset=['plot_id', 'cardinal_dir', 'distance_m'])
 
-        # Get colormap for each plot id
-        plot_colors = pc.qualitative.Light24[:len(unique_combinations['plot_id'].unique())]
-        plot_colors = dict(zip(unique_combinations['plot_id'].unique(), plot_colors))
+        # Get color_code per plot_id from df_gnss
+        plot_colors = dict(df_gnss[['plot_id', 'color_code']].dropna().values)
+        used_plot_ids = df['plot_id'].unique()
+        missing_plot_ids = [pid for pid in used_plot_ids if pid not in plot_colors]
+        fallback_color = '#999999'  # a light gray fallback color
+        for pid in missing_plot_ids:
+            plot_colors[pid] = fallback_color
+        if missing_plot_ids:
+            st.warning(
+                f"⚠️ The following plot IDs do not have a specified color in `df_gnss` "
+                f"and have been assigned a fallback color ({fallback_color}):\n\n"
+                f"{', '.join(missing_plot_ids)}"
+            )
 
         # Add marker for sample locations, with pop-up showing plotid/depth/density
         radius = 30
@@ -459,7 +450,7 @@ if st.button('Process Forms'):
         color_list = [plot_colors.get(plot_id, '#000000') for plot_id in unique_plot_ids]  # Default to black if plot_id is not found
 
         # Snow Depth Bar Stacked Plot
-        fig1, ax1 = plt.subplots(figsize=(7, 2.5))
+        fig1, ax1 = plt.subplots(figsize=(6.5, 3), constrained_layout=True)  # Snow depth histogram        
         bin_edges = np.histogram_bin_edges(df['snow_depth'].dropna(), bins=30)
         
         bottom_stack = np.zeros(len(bin_edges) - 1)  # Initialize stacking baseline
@@ -478,7 +469,7 @@ if st.button('Process Forms'):
         ax1.set_ylabel('Count')
         
         # Density Bar Stacked Plot
-        fig2, ax2 = plt.subplots(figsize=(7, 2.5))
+        fig2, ax2 = plt.subplots(figsize=(6.5, 3), constrained_layout=True)  # Snow depth histogram        
         bin_edges_density = np.arange(0, 1.05, 0.025)
         
         bottom_density_stack = np.zeros(len(bin_edges_density) - 1)  # Initialize stacking baseline
@@ -497,29 +488,146 @@ if st.button('Process Forms'):
         ax2.set_xlabel('Density')
         ax2.set_ylabel('Count')
         
+        # --- Snow Depth vs SWE Scatterplot ---
+        fig3, ax3 = plt.subplots(figsize=(6.5, 3), constrained_layout=True)  # Snow depth histogram        
+    
+        # Prepare scatter data
+        for plot_id, color in zip(unique_plot_ids, color_list):
+            subset = df[(df['plot_id'] == plot_id) & df['snow_depth'].notna() & df['swe_final'].notna()]
+            ax3.scatter(
+                subset['snow_depth'], subset['swe_final'],
+                label=f'Plot {plot_id}', color=color, alpha=0.7, edgecolor='black', s=40
+            )
+    
+        # Fit regression line (y = m·x, no intercept)
+        valid = df[['snow_depth', 'swe_final']].dropna()
+        X = valid[['snow_depth']].values
+        y = valid['swe_final'].values
+    
+        if len(X) > 1:
+            from sklearn.linear_model import LinearRegression
+            from sklearn.metrics import r2_score
+    
+            model = LinearRegression(fit_intercept=False)
+            model.fit(X, y)
+            slope = float(model.coef_[0])
+            y_pred = model.predict(X)
+            r2 = r2_score(y, y_pred)
+    
+            # Draw regression line
+            x_line = np.linspace(X.min(), X.max(), 100)
+            ax3.plot(x_line, slope * x_line, color='black', linewidth=2, linestyle='--')
+    
+            # Annotate equation
+            eqn_text = f'y = {slope:.3f}·x\nR² = {r2:.3f}'
+            ax3.text(0.05, 0.95, eqn_text, transform=ax3.transAxes,
+                     ha='left', va='top', fontsize=10, bbox=dict(facecolor='white', alpha=0.7, edgecolor='black'))
+    
+        ax3.set_title('SWE vs Snow Depth')
+        ax3.set_xlabel('Snow Depth (cm)')
+        ax3.set_ylabel('SWE (cm)')
+        
+        # --- Plot-averaged Snow Depth vs SWE with ±1 SD error bars ---
+        fig4, ax4 = plt.subplots(figsize=(6.5, 3), constrained_layout=True)  # Snow depth histogram        
+        
+        # Collapse to plot-level means & SDs
+        plot_stats = (
+            df[['plot_id', 'snow_depth', 'swe_final']]
+            .dropna()
+            .groupby('plot_id')
+            .agg(
+                depth_mean=('snow_depth', 'mean'),
+                swe_mean=('swe_final', 'mean'),
+                depth_sd=('snow_depth', 'std'),
+                swe_sd=('swe_final', 'std')
+            )
+            .dropna()
+        )
+        
+        # Fit linear regression on plot means
+        from sklearn.linear_model import LinearRegression
+        X_avg = plot_stats[['depth_mean']].values
+        y_avg = plot_stats['swe_mean'].values
+        
+        reg_avg = LinearRegression(fit_intercept=False)
+        reg_avg.fit(X_avg, y_avg)
+        slope_avg = float(reg_avg.coef_[0])
+        r2_avg = reg_avg.score(X_avg, y_avg)
+        
+        # Regression line
+        x_line_avg = np.linspace(X_avg.min(), X_avg.max(), 100)
+        y_line_avg = reg_avg.predict(x_line_avg.reshape(-1, 1))
+        ax4.plot(x_line_avg, y_line_avg, color='black', linestyle='--', linewidth=2)
+        
+        # Error bars and points
+        for pid, row in plot_stats.iterrows():
+            color = plot_colors.get(pid, 'black')
+            ax4.errorbar(
+                row['depth_mean'], row['swe_mean'],
+                xerr=row['depth_sd'], yerr=row['swe_sd'],
+                fmt='o', capsize=3, color=color, ecolor='gray',
+                alpha=0.8
+            )
+            # Add plot_id label next to the point
+            ax4.text(
+                row['depth_mean'] + 1,  # small horizontal offset to prevent overlap
+                row['swe_mean'],
+                pid,
+                fontsize=8,
+                color='black'   ,
+                ha='left',
+                va='center'
+            )
+
+        # Annotations
+        eqn_text_avg = f'y = {slope_avg:.3f}·x\nR² = {r2_avg:.3f}'
+        ax4.text(0.05, 0.95, eqn_text_avg, transform=ax4.transAxes,
+                 ha='left', va='top', fontsize=10, bbox=dict(facecolor='white', alpha=0.7, edgecolor='black'))
+        
+        # Labels
+        ax4.set_title('Plot-Averaged SWE vs Snow Depth ±1 SD')
+        ax4.set_xlabel('Mean Snow Depth (cm)')
+        ax4.set_ylabel('Mean SWE (cm)')
+        
         # Combine the legends
         handles, labels = ax1.get_legend_handles_labels()
-
-        # Streamlit columns layout
-        col1, col2, col3 = st.columns([2, 1.5, 1], vertical_alignment='top')  # Adjust the column widths as needed
-
+        
+        # --- Streamlit layout: Map | Legend + Plots ---
+        col1, col_group = st.columns([1.8, 3.0], gap="medium")
+        
+        # --- Map Section ---
         with col1:
-
             st_folium(m, width=700, height=500, returned_objects=[])
             st.markdown(
                 """
-                **Note:** A red bounding box should be drawn around all data points. If you do not see the bounding box, there may be erroneous data points plotting outside of the current map view.
+                **Note:** A red bounding box should be drawn around all data points. 
+                If you do not see the bounding box, there may be erroneous data points 
+                plotting outside of the current map view.
                 """
             )
-
-        with col2:
-            # Plot the histograms
-            st.pyplot(fig1)
-            st.pyplot(fig2)
-        with col3:
-            # Create a new figure for the legend
-            fig_legend, ax_legend = plt.subplots(figsize=(3, 5))  # Adjust size as needed
-            ax_legend.axis('off')  # Turn off axis
-            ax_legend.legend(handles, labels, loc='upper left', fontsize='small') #, bbox_to_anchor=(1, 1), ncol=1)  # Position legend
+        
+        # --- Plotting Section (legend + subplots) ---
+        with col_group:
+            # Top Legend across both plot columns
+            fig_legend, ax_legend = plt.subplots(figsize=(8, 1))
+            ax_legend.axis('off')
+            ax_legend.legend(
+                handles, labels,
+                loc='center',
+                ncol=min(5, len(labels)),  # adjusts based on number of plot IDs
+                fontsize='small',
+                frameon=False
+            )
             st.pyplot(fig_legend)
         
+            # 2 sub-columns: histograms and scatterplots
+            plot_col1, plot_col2 = st.columns([1.2, 1.3], gap="small")
+        
+            with plot_col1:
+                st.pyplot(fig1)  # Snow depth histogram
+                st.pyplot(fig2)  # Density histogram
+        
+            with plot_col2:
+                st.pyplot(fig3)  # SWE vs depth (individual points)
+                st.pyplot(fig4)  # SWE vs depth (plot-level means with SD bars)
+
