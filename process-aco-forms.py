@@ -375,8 +375,6 @@ if st.button('Process Forms'):
                 df_notprocessed.index += 2
                 csv_zip.writestr(survey_date_str + '_' +  study_area_str + '_snowsurvey_NOTprocessed.csv', pd.DataFrame(df_notprocessed).to_csv(index=True, index_label='input_row'))
 
-
-        st.dataframe(df)
         # download button
         st.download_button(
             label="Download Output Files",
@@ -510,7 +508,6 @@ if st.button('Process Forms'):
                 label=f'Plot {plot_id}', color=color, alpha=0.7, edgecolor='black', s=40
             )
     
-        st.dataframe(df)
         # Fit regression line (y = m·x, no intercept)
         valid = df[['snow_depth', 'swe_final']].dropna()
         X = valid[['snow_depth']].values
