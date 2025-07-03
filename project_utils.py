@@ -55,7 +55,7 @@ def process_no_snow_entries_acoform(df, df_notprocessed, filter_to_not_processed
     # Step 2: Load plot features file using relative path (no subfolders)
     project_root = os.path.dirname(os.path.abspath(__file__))
     plot_features_dir = os.path.join(project_root, "plot_features")
-    filename = f"{survey_year}_{study_area}_ACO_PlotFeatures.xlsx"
+    filename = f"2025_{study_area}_ACO_PlotFeatures.xlsx"
     plot_features_filepath = os.path.join(plot_features_dir, filename)
     
     df_pf = pd.read_excel(
