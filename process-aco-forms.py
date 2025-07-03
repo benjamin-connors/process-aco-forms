@@ -375,6 +375,8 @@ if st.button('Process Forms'):
                 df_notprocessed.index += 2
                 csv_zip.writestr(survey_date_str + '_' +  study_area_str + '_snowsurvey_NOTprocessed.csv', pd.DataFrame(df_notprocessed).to_csv(index=True, index_label='input_row'))
 
+
+        st.dataframe(df)
         # download button
         st.download_button(
             label="Download Output Files",
@@ -455,7 +457,7 @@ if st.button('Process Forms'):
         st.session_state.map = m
 
         # Create histograms for each plot_id
-        unique_plot_ids = df['plot_id'].unique()
+        unique_plot_ids = np.atleast_1d(df['plot_id'].unique())
         color_list = [plot_colors.get(plot_id, '#000000') for plot_id in unique_plot_ids]  # Default to black if plot_id is not found
 
         # Snow Depth Bar Stacked Plot
@@ -508,10 +510,18 @@ if st.button('Process Forms'):
                 label=f'Plot {plot_id}', color=color, alpha=0.7, edgecolor='black', s=40
             )
     
+        st.dataframe(df)
         # Fit regression line (y = m·x, no intercept)
         valid = df[['snow_depth', 'swe_final']].dropna()
         X = valid[['snow_depth']].values
         y = valid['swe_final'].values
+        
+
+        st.write(f"SWE vs Snow Depth: valid data points count = {len(valid)}")
+        
+        for plot_id in unique_plot_ids:
+            subset = df[(df['plot_id'] == plot_id) & df['snow_depth'].notna() & df['swe_final'].notna()]
+            st.write(f"Plot {plot_id} subset size: {len(subset)}")
     
         if len(X) > 1:
             from sklearn.linear_model import LinearRegression
@@ -538,7 +548,7 @@ if st.button('Process Forms'):
         
         # --- Plot-averaged Snow Depth vs SWE with ±1 SD error bars ---
         fig4, ax4 = plt.subplots(figsize=(6.5, 3), constrained_layout=True)  # Snow depth histogram        
-        
+
         # Collapse to plot-level means & SDs
         plot_stats = (
             df[['plot_id', 'snow_depth', 'swe_final']]
@@ -553,50 +563,76 @@ if st.button('Process Forms'):
             .dropna()
         )
         
-        # Fit linear regression on plot means
-        from sklearn.linear_model import LinearRegression
-        X_avg = plot_stats[['depth_mean']].values
-        y_avg = plot_stats['swe_mean'].values
+        if len(plot_stats) < 2:
+            # Not enough data for regression or error bars
         
-        reg_avg = LinearRegression(fit_intercept=False)
-        reg_avg.fit(X_avg, y_avg)
-        slope_avg = float(reg_avg.coef_[0])
-        r2_avg = reg_avg.score(X_avg, y_avg)
+            if len(plot_stats) == 1:
+                # Single point: just plot the point without regression or error bars
+                row = plot_stats.iloc[0]
+                pid = plot_stats.index[0]
+                color = plot_colors.get(pid, 'black')
+                
+                ax4.plot(row['depth_mean'], row['swe_mean'], 'o', color=color)
+                ax4.text(row['depth_mean'] + 1, row['swe_mean'], pid, fontsize=8, ha='left', va='center')
         
-        # Regression line
-        x_line_avg = np.linspace(X_avg.min(), X_avg.max(), 100)
-        y_line_avg = reg_avg.predict(x_line_avg.reshape(-1, 1))
-        ax4.plot(x_line_avg, y_line_avg, color='black', linestyle='--', linewidth=2)
+                ax4.set_title('Plot-Averaged SWE vs Snow Depth')
+                ax4.set_xlabel('Mean Snow Depth (cm)')
+                ax4.set_ylabel('Mean SWE (cm)')
+                ax4.text(0.05, 0.95, "Only one plot available — regression not performed",
+                         transform=ax4.transAxes, ha='left', va='top', fontsize=10,
+                         bbox=dict(facecolor='white', alpha=0.7, edgecolor='black'))
         
-        # Error bars and points
-        for pid, row in plot_stats.iterrows():
-            color = plot_colors.get(pid, 'black')
-            ax4.errorbar(
-                row['depth_mean'], row['swe_mean'],
-                xerr=row['depth_sd'], yerr=row['swe_sd'],
-                fmt='o', capsize=3, color=color, ecolor='gray',
-                alpha=0.8
-            )
-            # Add plot_id label next to the point
-            ax4.text(
-                row['depth_mean'] + 1,  # small horizontal offset to prevent overlap
-                row['swe_mean'],
-                pid,
-                fontsize=8,
-                color='black'   ,
-                ha='left',
-                va='center'
-            )
-
-        # Annotations
-        eqn_text_avg = f'y = {slope_avg:.3f}·x\nR² = {r2_avg:.3f}'
-        ax4.text(0.05, 0.95, eqn_text_avg, transform=ax4.transAxes,
-                 ha='left', va='top', fontsize=10, bbox=dict(facecolor='white', alpha=0.7, edgecolor='black'))
+            else:
+                # No data points at all
+                ax4.text(0.5, 0.5, "No data available for plotting",
+                         ha='center', va='center', fontsize=12, color='red', transform=ax4.transAxes)
+                ax4.set_axis_off()
         
-        # Labels
-        ax4.set_title('Plot-Averaged SWE vs Snow Depth ±1 SD')
-        ax4.set_xlabel('Mean Snow Depth (cm)')
-        ax4.set_ylabel('Mean SWE (cm)')
+        else:
+            # Enough data for regression & error bars
+        
+            X_avg = plot_stats[['depth_mean']].values
+            y_avg = plot_stats['swe_mean'].values
+        
+            reg_avg = LinearRegression(fit_intercept=False)
+            reg_avg.fit(X_avg, y_avg)
+            slope_avg = float(reg_avg.coef_[0])
+            r2_avg = reg_avg.score(X_avg, y_avg)
+        
+            # Regression line
+            x_line_avg = np.linspace(X_avg.min(), X_avg.max(), 100)
+            y_line_avg = reg_avg.predict(x_line_avg.reshape(-1, 1))
+            ax4.plot(x_line_avg, y_line_avg, color='black', linestyle='--', linewidth=2)
+        
+            # Error bars and points
+            for pid, row in plot_stats.iterrows():
+                color = plot_colors.get(pid, 'black')
+                ax4.errorbar(
+                    row['depth_mean'], row['swe_mean'],
+                    xerr=row['depth_sd'], yerr=row['swe_sd'],
+                    fmt='o', capsize=3, color=color, ecolor='gray',
+                    alpha=0.8
+                )
+                # Add plot_id label next to the point
+                ax4.text(
+                    row['depth_mean'] + 1,  # small horizontal offset
+                    row['swe_mean'],
+                    pid,
+                    fontsize=8,
+                    color='black',
+                    ha='left',
+                    va='center'
+                )
+        
+            # Annotations
+            eqn_text_avg = f'y = {slope_avg:.3f}·x\nR² = {r2_avg:.3f}'
+            ax4.text(0.05, 0.95, eqn_text_avg, transform=ax4.transAxes,
+                     ha='left', va='top', fontsize=10, bbox=dict(facecolor='white', alpha=0.7, edgecolor='black'))
+        
+            # Labels
+            ax4.set_title('Plot-Averaged SWE vs Snow Depth ±1 SD')
+            ax4.set_xlabel('Mean Snow Depth (cm)')
+            ax4.set_ylabel('Mean SWE (cm)')
         
         # Combine the legends
         handles, labels = ax1.get_legend_handles_labels()
