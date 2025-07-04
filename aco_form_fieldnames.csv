@@ -64,7 +64,7 @@ read_flag,post_process,2025,2025_alt,2024_v2,2024,2022_v3,2024_gs,2022_v3_gs,202
 1,depth_max,,,Point Observation : Depth Max,Point Observation : Depth Max,Point Observation : Depth Max,Point_Observation.Depth_Max,Point_Observation.Depth_Max,,
 1,retrieval,,,Point Observation : Retrieval (%),Point Observation : Retrieval (%),Point Observation : Retrieval (%),Point_Observation.Retrieval____,Point_Observation.Retrieval____,,retrieval
 1,density_gscale,,,Point Observation : Density (mass scale),Point Observation : Density,Point Observation : Density,Point_Observation.Density,Point_Observation.Density,,density
-1,density_swescale,,,Point Observation : Density (SWE scale),,,Point_Observation.Density_MetroVan,,,
+1,density_swescale,,,Point Observation : Density (SWE scale),Point Observation : Density.1,,Point_Observation.Density_MetroVan,,,
 1,sample_rating,,,Point Observation : Sample Rating,Point Observation : Sample Rating,Point Observation : Sample Rating,Point_Observation.Sample_Rating,Point_Observation.Sample_Rating,,sample_rating
 1,obs_notes,,,Point Observation : Point Observation Notes,Point Observation : Point Observation Notes,Point Observation : Point Observation Notes,Point_Observation.Point_Observation_Notes,Point_Observation.Point_Observation_Notes,,notes
 ,obs_pic,,,Point Observation : Picture,Point Observation : Picture,Point Observation : Picture,Point_Observation.Picture,Point_Observation.Picture,,
