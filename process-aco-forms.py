@@ -114,8 +114,8 @@ if st.button('Process Forms'):
         df_fieldnames = pd.read_csv('aco_form_fieldnames.csv')
 
         # find fieldnames to keep based on 'read_flag' columns of fieldnames file
-        ix_keep = df_fieldnames['read_flag'].apply(lambda x: True if x == 1 else False)
-
+        ix_keep = df_fieldnames['read_flag'] == 1
+        
         # initialize processed and notprocessed dataframes with desired fields (add aco flight)
         df = pd.DataFrame(columns=df_fieldnames['post_process'][ix_keep])
 
